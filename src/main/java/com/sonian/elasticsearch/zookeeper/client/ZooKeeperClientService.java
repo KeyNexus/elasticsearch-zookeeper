@@ -42,7 +42,7 @@ import java.util.concurrent.locks.ReentrantLock;
 /**
  * @author imotov
  */
-public class ZooKeeperClientService extends AbstractLifecycleComponent<ZooKeeperClient> implements ZooKeeperClient {
+public class ZooKeeperClientService extends AbstractLifecycleComponent implements ZooKeeperClient {
 
     private volatile ZooKeeper zooKeeper;
 
@@ -440,7 +440,8 @@ public class ZooKeeperClientService extends AbstractLifecycleComponent<ZooKeeper
                 offset += chunk.length;
                 chunkNum++;
             }
-            return buf.bytes().copyBytesArray().toBytes();
+            return buf.bytes().toBytesRef().bytes;
+            //return buf.bytes().copyBytesArray().toBytes();
         } catch (KeeperException.NoNodeException e) {
             // This means that a new version of state is already posted and this version is
             // getting deleted - exit

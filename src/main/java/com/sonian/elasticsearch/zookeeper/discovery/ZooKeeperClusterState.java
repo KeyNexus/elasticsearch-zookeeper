@@ -27,14 +27,15 @@ import org.elasticsearch.cluster.metadata.MetaData;
 import org.elasticsearch.cluster.node.DiscoveryNodes;
 import org.elasticsearch.cluster.routing.RoutingTable;
 import org.elasticsearch.common.component.AbstractLifecycleComponent;
-import org.elasticsearch.common.io.stream.BytesStreamInput;
 import org.elasticsearch.common.io.stream.BytesStreamOutput;
+import org.elasticsearch.common.io.stream.InputStreamStreamInput;
 import org.elasticsearch.common.io.stream.StreamInput;
 import org.elasticsearch.common.io.stream.StreamOutput;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.discovery.Discovery;
 import org.elasticsearch.discovery.zen.DiscoveryNodesProvider;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
@@ -51,7 +52,7 @@ import java.util.concurrent.locks.ReentrantLock;
  *
  * @author imotov
  */
-public class ZooKeeperClusterState extends AbstractLifecycleComponent<ZooKeeperClusterState> {
+public class ZooKeeperClusterState extends AbstractLifecycleComponent {
 
     private final Lock publishingLock = new ReentrantLock();
 
@@ -113,7 +114,8 @@ public class ZooKeeperClusterState extends AbstractLifecycleComponent<ZooKeeperC
             for (ClusterStatePart<?> part : this.parts) {
                 buf.writeString(part.publishClusterStatePart(state));
             }
-            zooKeeperClient.setOrCreatePersistentNode(statePath, buf.bytes().copyBytesArray().toBytes());
+            //zooKeeperClient.setOrCreatePersistentNode(statePath, buf.bytes().copyBytesArray().toBytes());
+            zooKeeperClient.setOrCreatePersistentNode(statePath, buf.bytes().toBytesRef().bytes);
 
             // Cleaning previous versions of updated cluster parts
             for (ClusterStatePart<?> part : this.parts) {
@@ -172,7 +174,8 @@ public class ZooKeeperClusterState extends AbstractLifecycleComponent<ZooKeeperC
             if (stateBuf == null) {
                 return null;
             }
-            final BytesStreamInput buf = new BytesStreamInput(stateBuf);
+
+            final InputStreamStreamInput buf = new InputStreamStreamInput(new ByteArrayInputStream(stateBuf));
             Version stateVersion;
             try {
                 stateVersion = Version.readVersion(buf);
@@ -184,8 +187,8 @@ public class ZooKeeperClusterState extends AbstractLifecycleComponent<ZooKeeperC
             }
             buf.setVersion(stateVersion);
             if (!stateVersion.equals(localVersion()) && !Version
-                    .largest(localVersion(), stateVersion).minimumCompatibilityVersion()
-                    .onOrBefore(Version.smallest(localVersion(), stateVersion))) {
+                    .max(localVersion(), stateVersion).minimumCompatibilityVersion()
+                    .onOrBefore(Version.min(localVersion(), stateVersion))) {
                 throw new ZooKeeperIncompatibleStateVersionException(
                         "Local version: " + localVersion()
                                 + " incompatible with remote version: " + stateVersion);
@@ -295,12 +298,13 @@ public class ZooKeeperClusterState extends AbstractLifecycleComponent<ZooKeeperC
         parts.add(new ClusterStatePart<RoutingTable>("routingTable") {
             @Override
             public void writeTo(RoutingTable statePart, StreamOutput out) throws IOException {
-                RoutingTable.Builder.writeTo(statePart, out);
+                statePart.writeTo(out);
+                //RoutingTable.builder(statePart).build().writeTo(out);
             }
 
             @Override
             public RoutingTable readFrom(StreamInput in) throws IOException {
-                return RoutingTable.Builder.readFrom(in);
+                return RoutingTable.readFrom(in);
             }
 
             @Override
@@ -316,12 +320,14 @@ public class ZooKeeperClusterState extends AbstractLifecycleComponent<ZooKeeperC
         parts.add(new ClusterStatePart<DiscoveryNodes>("discoveryNodes") {
             @Override
             public void writeTo(DiscoveryNodes statePart, StreamOutput out) throws IOException {
-                DiscoveryNodes.Builder.writeTo(statePart, out);
+                statePart.writeTo(out);
+                //DiscoveryNodes.Builder.writeTo(statePart, out);
             }
 
             @Override
             public DiscoveryNodes readFrom(StreamInput in) throws IOException {
-                return DiscoveryNodes.Builder.readFrom(in, nodesProvider.nodes().localNode());
+                return DiscoveryNodes.readFrom(in,nodesProvider.nodes().getLocalNode());
+                //return DiscoveryNodes.Builder.readFrom(in, nodesProvider.nodes().localNode());
             }
 
             @Override
@@ -337,12 +343,14 @@ public class ZooKeeperClusterState extends AbstractLifecycleComponent<ZooKeeperC
         parts.add(new ClusterStatePart<MetaData>("metaData") {
             @Override
             public void writeTo(MetaData statePart, StreamOutput out) throws IOException {
-                MetaData.Builder.writeTo(statePart, out);
+                statePart.writeTo(out);
+                //MetaData.Builder.writeTo(statePart, out);
             }
 
             @Override
             public MetaData readFrom(StreamInput in) throws IOException {
-                return MetaData.Builder.readFrom(in);
+                return MetaData.readFrom(in);
+               // return MetaData.Builder.readFrom(in);
             }
 
             @Override
@@ -358,12 +366,14 @@ public class ZooKeeperClusterState extends AbstractLifecycleComponent<ZooKeeperC
         parts.add(new ClusterStatePart<ClusterBlocks>("clusterBlocks") {
             @Override
             public void writeTo(ClusterBlocks statePart, StreamOutput out) throws IOException {
-                ClusterBlocks.Builder.writeClusterBlocks(statePart, out);
+                statePart.writeTo(out);
+                //ClusterBlocks.Builder.writeClusterBlocks(statePart, out);
             }
 
             @Override
             public ClusterBlocks readFrom(StreamInput in) throws IOException {
-                return ClusterBlocks.Builder.readClusterBlocks(in);
+                return new ClusterBlocks(in);
+                //return ClusterBlocks.Builder.readClusterBlocks(in);
             }
 
             @Override
@@ -415,7 +425,8 @@ public class ZooKeeperClusterState extends AbstractLifecycleComponent<ZooKeeperC
                 streamOutput.setVersion(localVersion());
                 writeTo(statePart, streamOutput);
                 // Create Root node with version and size of the state part
-                rootPath = zooKeeperClient.createLargeSequentialNode(path, streamOutput.bytes().copyBytesArray().toBytes());
+                rootPath = zooKeeperClient.createLargeSequentialNode(path, streamOutput.bytes().toBytesRef().bytes);
+                //rootPath = zooKeeperClient.createLargeSequentialNode(path, streamOutput.bytes().copyBytesArray().toBytes());
             } catch (IOException e) {
                 throw new ZooKeeperClientException("Cannot read " + statePartName + " node at " + path, e);
             }
@@ -456,7 +467,7 @@ public class ZooKeeperClusterState extends AbstractLifecycleComponent<ZooKeeperC
 
                 byte[] buf = zooKeeperClient.getLargeNode(path);
                 if (buf != null) {
-                    StreamInput in = new BytesStreamInput(buf);
+                    StreamInput in = new InputStreamStreamInput(new ByteArrayInputStream(buf));
                     in.setVersion(version);
                     return readFrom(in);
                 } else {

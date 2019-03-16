@@ -25,7 +25,7 @@ import java.util.Set;
 /**
  * @author imotov
  */
-public interface ZooKeeperClient extends LifecycleComponent<ZooKeeperClient> {
+public interface ZooKeeperClient extends LifecycleComponent {
 
     void createPersistentNode(String path) throws InterruptedException;
 

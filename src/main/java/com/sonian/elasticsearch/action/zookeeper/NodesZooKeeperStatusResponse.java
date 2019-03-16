@@ -16,8 +16,9 @@
 
 package com.sonian.elasticsearch.action.zookeeper;
 
-import org.elasticsearch.action.support.nodes.NodeOperationResponse;
-import org.elasticsearch.action.support.nodes.NodesOperationResponse;
+import org.elasticsearch.action.FailedNodeException;
+import org.elasticsearch.action.support.nodes.BaseNodeResponse;
+import org.elasticsearch.action.support.nodes.BaseNodesResponse;
 import org.elasticsearch.cluster.ClusterName;
 import org.elasticsearch.cluster.node.DiscoveryNode;
 import org.elasticsearch.common.io.stream.StreamInput;
@@ -26,27 +27,37 @@ import org.elasticsearch.common.xcontent.ToXContent;
 import org.elasticsearch.common.xcontent.XContentBuilder;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  */
-public class NodesZooKeeperStatusResponse extends NodesOperationResponse<NodesZooKeeperStatusResponse.NodeZooKeeperStatusResponse> implements ToXContent {
+public class NodesZooKeeperStatusResponse extends BaseNodesResponse<NodesZooKeeperStatusResponse.NodeZooKeeperStatusResponse> implements ToXContent {
 
 
-    public NodesZooKeeperStatusResponse(ClusterName clusterName, NodeZooKeeperStatusResponse[] nodes) {
-        super(clusterName, nodes);
+    public NodesZooKeeperStatusResponse(ClusterName clusterName, List<NodeZooKeeperStatusResponse> nodes, List<FailedNodeException> failures) {
+        super(clusterName, nodes, failures);
     }
 
     @Override public void readFrom(StreamInput in) throws IOException {
-        super.readFrom(in);
-        nodes = new NodeZooKeeperStatusResponse[in.readVInt()];
-        for (int i = 0; i < nodes.length; i++) {
-            nodes[i] = NodeZooKeeperStatusResponse.readNodeZooKeeperStatusResponse(in);
-        }
+
     }
 
-    @Override public void writeTo(StreamOutput out) throws IOException {
+
+    @Override
+    protected List<NodeZooKeeperStatusResponse> readNodesFrom(StreamInput in) throws IOException {
+        super.readFrom(in);
+        List<NodeZooKeeperStatusResponse> toReturn = new ArrayList<>(in.readVInt());
+        for (int i = 0; i < toReturn.size(); i++) {
+            toReturn.add(i, NodeZooKeeperStatusResponse.readNodeZooKeeperStatusResponse(in));
+        }
+        return toReturn;
+    }
+
+    @Override
+    protected void writeNodesTo(StreamOutput out, List<NodeZooKeeperStatusResponse> nodes) throws IOException {
         super.writeTo(out);
-        out.writeVInt(nodes.length);
+        out.writeVInt(nodes.size());
         for (NodeZooKeeperStatusResponse node : nodes) {
             node.writeTo(out);
         }
@@ -55,11 +66,11 @@ public class NodesZooKeeperStatusResponse extends NodesOperationResponse<NodesZo
     @Override
     public XContentBuilder toXContent(XContentBuilder builder, Params params) throws IOException {
         builder.startObject();
-        builder.field("cluster_name", getClusterNameAsString());
+        builder.field("cluster_name", getClusterName().value());
 
         builder.startObject("nodes");
-        for (NodesZooKeeperStatusResponse.NodeZooKeeperStatusResponse nodeInfo : nodes) {
-            builder.startObject(nodeInfo.getNode().id(), XContentBuilder.FieldCaseConversion.NONE);
+        for (NodesZooKeeperStatusResponse.NodeZooKeeperStatusResponse nodeInfo : getNodes()) {
+            builder.startObject(nodeInfo.getNode().getId());
             nodeInfo.toXContent(builder, params);
             builder.endObject();
         }
@@ -70,7 +81,7 @@ public class NodesZooKeeperStatusResponse extends NodesOperationResponse<NodesZo
         return builder;
     }
 
-    public static class NodeZooKeeperStatusResponse extends NodeOperationResponse implements ToXContent {
+    public static class NodeZooKeeperStatusResponse extends BaseNodeResponse implements ToXContent {
 
         boolean enabled = false;
 
@@ -113,7 +124,7 @@ public class NodesZooKeeperStatusResponse extends NodesOperationResponse<NodesZo
 
         @Override
         public XContentBuilder toXContent(XContentBuilder builder, Params params) throws IOException {
-            builder.field("name", getNode().name());
+            builder.field("name", getNode().getName());
             builder.field("enabled", enabled());
             builder.field("connected", connected());
 
